@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>25物联网5年1班考勤可视化管理系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet"/>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#0070ff',
+            primaryDeep: '#0039cb',
+            success: '#00e396',
+            warning: '#ffb142',
+            danger: '#ff4757',
+            info: '#a55eea',
+            darkBg: '#0f172a',
+            darkCard: 'rgba(30, 41, 59, 0.7)',
+            darkBorder: 'rgba(0, 112, 255, 0.3)',
+          },
+          fontFamily: {
+            inter: ['Inter', 'system-ui', 'sans-serif'],
+          },
+        }
+      }
+    }
+  </script>
+  
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto { content-visibility: auto; }
+      .tech-glow { box-shadow: 0 0 15px rgba(0, 112, 255, 0.4); }
+      .tech-border { border: 1px solid rgba(0, 112, 255, 0.3); }
+      .glass-card {
+        background: rgba(30, 41, 59, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+      }
+      .hover-glow:hover {
+        box-shadow: 0 0 20px rgba(0, 112, 255, 0.6);
+        transition: all 0.3s ease;
+      }
+      .grid-bg {
+        background-image:
+          linear-gradient(rgba(0,112,255,0.05) 1px, transparent 1px),
+          linear-gradient(90deg,rgba(0,112,255,0.05) 1px, transparent 1px);
+        background-size: 30px 30px;
+      }
+      .table-th-sticky th {
+        position: sticky; top: 0; z-index: 10;
+        background: rgba(30, 41, 59, 0.95);
+      }
+      .attendance-scroll {
+        max-height: 380px;
+        overflow-y: auto;
+      }
+    }
+  </style>
+
+  <style>
+    /* 登录框强制发光边框，永久生效 */
+    #login-page > div {
+      border: 3px solid #0070ff !important;
+      box-shadow: 0 0 25px #0070ff, 0 0 50px #0070ff !important;
+    }
+  </style>
+</head>
+
+<body class="bg-darkBg min-h-screen font-inter grid-bg text-gray-200">
+
+<!-- 登录页 -->
+<div id="login-page" class="fixed inset-0 flex items-center justify-center z-9999 bg-darkBg/95">
+  <div class="glass-card tech-border tech-glow rounded-2xl p-8 w-full max-w-md hover-glow">
+    <div class="text-center mb-6">
+      <i class="fa fa-user-circle text-primary text-4xl mb-3"></i>
+      <h2 class="text-2xl font-bold text-white">账号登录</h2>
+      <p class="text-gray-400 mt-1">25物联网5年1班考勤管理系统</p>
+    </div>
+    <div class="space-y-4">
+      <div>
+        <input id="login-username" placeholder="请输入账号"
+          class="w-full bg-darkCard tech-border rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-primary text-white placeholder-gray-500"/>
+      </div>
+      <div>
+        <input id="login-pwd" type="password" placeholder="请输入密码"
+          class="w-full bg-darkCard tech-border rounded-lg px-4 py-3 outline-none focus:ring-2 focus:ring-primary text-white placeholder-gray-500"/>
+      </div>
+      <button id="login-btn"
+        class="w-full bg-primary hover:bg-primaryDeep tech-glow rounded-lg py-3 font-medium transition-all">
+        登录系统
+      </button>
+      <p id="login-msg" class="text-danger text-sm text-center hidden"></p>
+    </div>
+  </div>
+</div>
+
+<!-- 主系统 -->
+<div id="system" class="hidden">
+  <div class="fixed top-6 right-6 z-50 flex gap-3">
+    <button id="go-user-admin"
+      class="glass-card tech-border px-4 py-2 rounded-lg text-sm hover-glow transition-all">
+      <i class="fa fa-users mr-1"></i>用户管理
+    </button>
+    <button id="logout-btn"
+      class="glass-card tech-border px-4 py-2 rounded-lg text-sm hover-glow transition-all">
+      <i class="fa fa-sign-out mr-1"></i>退出登录
+    </button>
+  </div>
+
+  <div class="fixed top-20 right-6 z-50">
+    <label class="glass-card tech-border tech-glow hover-glow cursor-pointer rounded-full w-12 h-12 flex items-center justify-center transition-all duration-300">
+      <i class="fa fa-upload text-primary text-lg"></i>
+      <input type="file" id="file-input" accept=".xlsx" class="hidden"/>
+    </label>
+  </div>
+
+  <header class="w-full py-8 px-6 md:px-12">
+    <div class="border-l-4 border-primary pl-5">
+      <h1 class="text-[clamp(1.8rem,3vw,2.8rem)] font-bold text-white tracking-wide">
+        25物联网5年1班考勤可视化管理系统
+      </h1>
+      <div class="mt-2 flex flex-wrap gap-6 text-sm text-primary/80">
+        <div><i class="fa fa-user-circle mr-1"></i>班主任：解莲子</div>
+        <div><i class="fa fa-database mr-1"></i>已存储记录：<span id="localTotal" class="text-white font-medium">0</span> 条</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container mx-auto px-6 md:px-12 pb-20">
+    <div id="loading" class="hidden fixed inset-0 flex items-center justify-center z-40 bg-darkBg/90">
+      <div class="w-12 h-12 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+      <p class="mt-4 text-primary">数据解析中...</p>
+    </div>
+
+    <div class="mb-8">
+      <button id="clearAllBtn" class="glass-card tech-border px-4 py-2 rounded-lg text-sm hover-glow transition-all">
+        <i class="fa fa-trash mr-1"></i>清空全部历史数据
+      </button>
+    </div>
+
+    <!-- 统计卡片区域 -->
+    <div id="stats-section" class="mb-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div class="glass-card tech-border rounded-xl p-5 hover-glow">
+        <p class="text-gray-400 text-sm">总记录条数</p>
+        <p id="total-record" class="text-2xl font-bold text-white mt-2">0</p>
+      </div>
+      <div class="glass-card tech-border rounded-xl p-5 hover-glow">
+        <p class="text-warning text-sm">迟到记录</p>
+        <p id="late-count" class="text-2xl font-bold text-warning mt-2">0</p>
+      </div>
+      <div class="glass-card tech-border rounded-xl p-5 hover-glow">
+        <p class="text-danger text-sm">旷课记录</p>
+        <p id="absent-count" class="text-2xl font-bold text-danger mt-2">0</p>
+      </div>
+      <div class="glass-card tech-border rounded-xl p-5 hover-glow">
+        <p class="text-primary text-sm">班级累计总扣分</p>
+        <p id="total-deduct" class="text-2xl font-bold text-primary mt-2">0</p>
+      </div>
+    </div>
+
+    <!-- 图表区域 -->
+    <div id="chart-section" class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-10">
+      <div class="glass-card tech-border rounded-xl p-6 hover-glow">
+        <h3 class="text-lg font-semibold text-white mb-4">异常考勤占比</h3>
+        <div class="h-72"><canvas id="pie-chart"></canvas></div>
+      </div>
+      <div class="glass-card tech-border rounded-xl p-6 hover-glow">
+        <h3 class="text-lg font-semibold text-white mb-4">各教学周异常考勤统计</h3>
+        <div class="h-72"><canvas id="bar-chart"></canvas></div>
+      </div>
+    </div>
+
+    <!-- ==============================================
+          【位置互换 第一位：考勤明细数据】（带滚动）
+          ============================================== -->
+    <div id="attendance-section" class="mb-10">
+      <div class="flex flex-wrap gap-4 items-center mb-4">
+        <h2 class="text-lg font-semibold text-white">
+          <i class="fa fa-table text-primary mr-2"></i>考勤明细数据
+        </h2>
+        <input id="search-name" type="text" placeholder="搜索学生姓名" 
+          class="bg-darkCard tech-border rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary w-48 text-sm"/>
+        <select id="filter-status" class="bg-darkCard tech-border rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary text-sm">
+          <option value="">全部状态</option>
+          <option value="迟到">迟到</option>
+          <option value="旷课">旷课</option>
+          <option value="请假">请假</option>
+        </select>
+        <select id="filter-week" class="bg-darkCard tech-border rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary text-sm">
+          <option value="">全部教学周</option>
+        </select>
+        <select id="filter-day" class="bg-darkCard tech-border rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-primary text-sm">
+          <option value="">全部星期</option>
+          <option value="星期一">星期一</option>
+          <option value="星期二">星期二</option>
+          <option value="星期三">星期三</option>
+          <option value="星期四">星期四</option>
+          <option value="星期五">星期五</option>
+          <option value="星期六">星期六</option>
+          <option value="星期日">星期日</option>
+        </select>
+      </div>
+
+      <div class="glass-card tech-border rounded-xl p-4 overflow-hidden attendance-scroll">
+        <table id="attendance-table" class="w-full min-w-[1000px] text-sm">
+          <thead class="table-th-sticky">
+            <tr class="border-b border-primary/30">
+              <th class="py-3 px-4 text-left font-medium">姓名</th>
+              <th class="py-3 px-4 text-left font-medium">班级</th>
+              <th class="py-3 px-4 text-left font-medium">出勤状态</th>
+              <th class="py-3 px-4 text-left font-medium">单次扣分</th>
+              <th class="py-3 px-4 text-left font-medium">教学周</th>
+              <th class="py-3 px-4 text-left font-medium">星期几</th>
+              <th class="py-3 px-4 text-left font-medium">节次</th>
+              <th class="py-3 px-4 text-left font-medium">上课时间</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ==============================================
+          【位置互换 第二位：学生扣分排行榜】
+          排序修复：**扣分越多（负数绝对值越大）排名越靠前（第1名）**
+          ============================================== -->
+    <div id="student-deduct-section" class="mb-10">
+      <h2 class="text-lg font-semibold text-white mb-4">
+        <i class="fa fa-trophy text-primary mr-2"></i>学生个人累计扣分排行
+      </h2>
+      <div class="glass-card tech-border rounded-xl p-5 overflow-x-auto hover-glow">
+        <table class="w-full min-w-[600px] text-sm">
+          <thead>
+            <tr class="border-b border-primary/30">
+              <th class="py-3 px-4 text-left font-medium">排名</th>
+              <th class="py-3 px-4 text-left font-medium">学生姓名</th>
+              <th class="py-3 px-4 text-left font-medium">班级</th>
+              <th class="py-3 px-4 text-left font-medium">累计总扣分</th>
+              <th class="py-3 px-4 text-left font-medium">异常记录次数</th>
+            </tr>
+          </thead>
+          <tbody id="deduct-rank-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- 用户管理后台弹窗 -->
+<div id="user-admin" class="hidden fixed inset-0 z-9999 bg-darkBg/95 p-5">
+  <div class="max-w-3xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+      <h2 class="text-xl font-bold text-white"><i class="fa fa-users text-primary mr-2"></i>账号管理</h2>
+      <button id="close-user-admin" class="text-white"><i class="fa fa-times text-xl"></i></button>
+    </div>
+    <div class="glass-card tech-border rounded-xl p-6 mb-6">
+      <h3 class="mb-4 text-white">新增账号</h3>
+      <div class="flex gap-4 flex-wrap">
+        <input id="new-username" placeholder="账号" class="flex-1 min-w-[200px] bg-darkCard border rounded-lg px-3 py-2"/>
+        <input id="new-pwd" placeholder="密码" type="password" class="flex-1 min-w-[200px] bg-darkCard border rounded-lg px-3 py-2"/>
+        <button id="add-user-btn" class="bg-primary px-5 py-2 rounded-lg">添加</button>
+      </div>
+      <p id="add-msg" class="mt-3 text-sm hidden"></p>
+    </div>
+    <div class="glass-card tech-border rounded-xl p-6">
+      <h3 class="mb-4 text-white">账号列表</h3>
+      <div class="overflow-x-auto"><table class="w-full text-sm"><thead>
+        <tr class="border-b border-primary/30">
+          <th class="py-3 px-4 text-left text-white">账号</th><th class="py-3 px-4 text-left text-white">操作</th>
+        </tr></thead>
+        <tbody id="user-list-body"></tbody>
+      </table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const USER_STORAGE_KEY = "attendance_system_users";
+const LOGIN_SESSION_KEY = "attendance_login_current_user";
+
+function initDefaultUser() {
+  if (!localStorage.getItem(USER_STORAGE_KEY)) {
+    localStorage.setItem(USER_STORAGE_KEY, JSON.stringify([{ username: "admin", password: "123456" }]));
+  }
+}
+function getAllUserList() { return JSON.parse(localStorage.getItem(USER_STORAGE_KEY) || "[]"); }
+function saveUserList(users) { localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(users)); }
+function getCurrentLoginUser() { return sessionStorage.getItem(LOGIN_SESSION_KEY); }
+function setLoginUser(u) { sessionStorage.setItem(LOGIN_SESSION_KEY, u); }
+function logoutSystem() { sessionStorage.removeItem(LOGIN_SESSION_KEY); }
+
+function showTip(el, txt, err = true) {
+  el.innerText = txt; el.classList.remove("hidden");
+  el.className = err ? "mt-3 text-sm text-danger" : "mt-3 text-sm text-success";
+  setTimeout(() => el.classList.add("hidden"), 3000);
+}
+
+const loginPage = document.getElementById("login-page");
+const systemMain = document.getElementById("system");
+const userAdminPage = document.getElementById("user-admin");
+const loginAccount = document.getElementById("login-username");
+const loginPwd = document.getElementById("login-pwd");
+const loginBtn = document.getElementById("login-btn");
+const loginMsg = document.getElementById("login-msg");
+const logoutBtn = document.getElementById("logout-btn");
+
+function checkLoginState() {
+  const u = getCurrentLoginUser();
+  if (u) {
+    loginPage.classList.add("hidden");
+    systemMain.classList.remove("hidden");
+    initAllSystemData();
+  } else {
+    loginPage.classList.remove("hidden");
+    systemMain.classList.add("hidden");
+    userAdminPage.classList.add("hidden");
+  }
+}
+
+loginBtn.addEventListener("click", () => {
+  const uname = loginAccount.value.trim();
+  const pwd = loginPwd.value.trim();
+  if (!uname || !pwd) return showTip(loginMsg, "请输入账号密码");
+  const users = getAllUserList();
+  const find = users.find(x => x.username === uname && x.password === pwd);
+  if (find) { setLoginUser(uname); checkLoginState(); }
+  else showTip(loginMsg, "账号或密码错误");
+});
+
+logoutBtn.addEventListener("click", () => { logoutSystem(); checkLoginState(); });
+
+const goUserAdmin = document.getElementById("go-user-admin");
+const closeUserAdmin = document.getElementById("close-user-admin");
+const newUsername = document.getElementById("new-username");
+const newPwd = document.getElementById("new-pwd");
+const addUserBtn = document.getElementById("add-user-btn");
+const addMsg = document.getElementById("add-msg");
+const userListBody = document.getElementById("user-list-body");
+
+goUserAdmin.addEventListener("click", () => { userAdminPage.classList.remove("hidden"); renderUserTable(); });
+closeUserAdmin.addEventListener("click", () => { userAdminPage.classList.add("hidden"); });
+
+function renderUserTable() {
+  const users = getAllUserList();
+  userListBody.innerHTML = "";
+  users.forEach(u => {
+    const tr = document.createElement("tr");
+    tr.className = "border-b border-primary/20 hover:bg-primary/5";
+    tr.innerHTML = `<td class="py-3 px-4 text-white">${u.username}</td>
+      <td class="py-3 px-4"><button data-user="${u.username}" class="del-btn text-danger text-sm">删除</button></td>`;
+    userListBody.appendChild(tr);
+  });
+  document.querySelectorAll(".del-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const tar = btn.dataset.user;
+      if (tar === "admin") return alert("admin不可删除");
+      if (!confirm("确定删除？")) return;
+      let list = getAllUserList();
+      list = list.filter(x => x.username !== tar);
+      saveUserList(list);
+      renderUserTable();
+    });
+  });
+}
+
+addUserBtn.addEventListener("click", () => {
+  const uname = newUsername.value.trim();
+  const pwd = newPwd.value.trim();
+  if (!uname || !pwd) return showTip(addMsg, "不能为空");
+  const list = getAllUserList();
+  if (list.some(x => x.username === uname)) return showTip(addMsg, "账号已存在");
+  list.push({ username: uname, password: pwd });
+  saveUserList(list);
+  newUsername.value = ""; newPwd.value = "";
+  renderUserTable();
+  showTip(addMsg, "添加成功", false);
+});
+
+let attendanceGlobalData = [];
+let pieChartInstance = null;
+let barChartInstance = null;
+const ATTENDANCE_KEY = "class_attendance_all_data";
+
+const fileInput = document.getElementById("file-input");
+const loading = document.getElementById("loading");
+const localTotal = document.getElementById("localTotal");
+const searchName = document.getElementById("search-name");
+const filterStatus = document.getElementById("filter-status");
+const filterWeek = document.getElementById("filter-week");
+const filterDay = document.getElementById("filter-day");
+const clearAllBtn = document.getElementById("clearAllBtn");
+
+function loadData() {
+  attendanceGlobalData = JSON.parse(localStorage.getItem(ATTENDANCE_KEY) || "[]");
+  localTotal.innerText = attendanceGlobalData.length;
+}
+function saveData() {
+  localStorage.setItem(ATTENDANCE_KEY, JSON.stringify(attendanceGlobalData));
+  localTotal.innerText = attendanceGlobalData.length;
+}
+
+function initAllSystemData() {
+  loadData();
+  calculateStats();
+  fillWeek();
+  renderCharts();
+  renderTable();
+  renderRank();
+}
+
+function calculateStats() {
+  let total = attendanceGlobalData.length;
+  let late = 0, absent = 0, deduct = 0;
+  attendanceGlobalData.forEach(item => {
+    deduct += item.deduct;
+    const s = item.status.trim();
+    if (s === "迟到") late++;
+    else if (s === "旷课") absent++;
+  });
+  document.getElementById("total-record").innerText = total;
+  document.getElementById("late-count").innerText = late;
+  document.getElementById("absent-count").innerText = absent;
+  document.getElementById("total-deduct").innerText = deduct;
+}
+
+function fillWeek() {
+  const set = new Set();
+  attendanceGlobalData.forEach(i => i.week && set.add(i.week));
+  filterWeek.innerHTML = `<option value="">全部教学周</option>`;
+  Array.from(set).sort().forEach(w => {
+    const opt = document.createElement("option");
+    opt.value = w; opt.innerText = w;
+    filterWeek.appendChild(opt);
+  });
+}
+
+function renderCharts() {
+  if (pieChartInstance) pieChartInstance.destroy();
+  if (barChartInstance) barChartInstance.destroy();
+
+  let late = 0, absent = 0, leave = 0;
+  attendanceGlobalData.forEach(i => {
+    const s = i.status.trim();
+    if (s === "迟到") late++;
+    else if (s === "旷课") absent++;
+    else if (s === "请假") leave++;
+  });
+
+  pieChartInstance = new Chart(document.getElementById("pie-chart"), {
+    type: "doughnut",
+    data: {
+      labels: ["迟到", "旷课", "请假"],
+      datasets: [{ data: [late, absent, leave], backgroundColor: ["#ffb142", "#ff4757", "#a55eea"] }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: "#e2e8f0" } } }
+    }
+  });
+
+  const weekMap = {};
+  attendanceGlobalData.forEach(i => {
+    if (!i.week) return;
+    if (!weekMap[i.week]) weekMap[i.week] = 0;
+    if (i.status !== "正常") weekMap[i.week]++;
+  });
+
+  barChartInstance = new Chart(document.getElementById("bar-chart"), {
+    type: "bar",
+    data: { labels: Object.keys(weekMap), datasets: [{ data: Object.values(weekMap), backgroundColor: "#0070ff" }] },
+    options: {
+      responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } },
+      scales: { x: { ticks: { color: "#94a3b8" } }, y: { ticks: { color: "#94a3b8" } } }
+    }
+  });
+}
+
+function renderTable() {
+  const key = searchName.value.trim();
+  const sts = filterStatus.value;
+  const wk = filterWeek.value;
+  const dy = filterDay.value;
+
+  let data = attendanceGlobalData.filter(i => {
+    if (key && !i.name.includes(key)) return false;
+    if (sts && i.status !== sts) return false;
+    if (wk && i.week !== wk) return false;
+    if (dy && i.day !== dy) return false;
+    return true;
+  });
+
+  const tb = document.getElementById("table-body");
+  tb.innerHTML = "";
+  if (data.length === 0) {
+    tb.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-gray-400">无数据</td></tr>`;
+    return;
+  }
+  data.forEach(i => {
+    const tr = document.createElement("tr");
+    let c = i.status === "迟到" ? "text-warning" : i.status === "旷课" ? "text-danger" : "text-info";
+    tr.innerHTML = `
+      <td class="py-3 px-4">${i.name}</td>
+      <td class="py-3 px-4">${i.className}</td>
+      <td class="py-3 px-4 font-medium ${c}">${i.status}</td>
+      <td class="py-3 px-4">${i.deduct}</td>
+      <td class="py-3 px-4">${i.week}</td>
+      <td class="py-3 px-4">${i.day}</td>
+      <td class="py-3 px-4">${i.section}</td>
+      <td class="py-3 px-4">${i.time}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+// ===================== 【核心修复：负数扣分正确排序】 =====================
+// 你的数据都是负数（-6、-9、-18...-66）
+// 排序逻辑：绝对值越大 = 扣分越多 = 排名越靠前（第1名）
+function renderRank() {
+  const map = {};
+  attendanceGlobalData.forEach(i => {
+    if (!map[i.name]) map[i.name] = { name: i.name, className: i.className, deduct: 0, cnt: 0 };
+    map[i.name].deduct += i.deduct;
+    map[i.name].cnt++;
+  });
+  // 修复排序算法：用【绝对值】大小排序，扣分最多排第1
+  const list = Object.values(map).sort((a, b) => Math.abs(b.deduct) - Math.abs(a.deduct));
+  
+  const bd = document.getElementById("deduct-rank-body");
+  bd.innerHTML = "";
+  list.forEach((item, idx) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="py-3 px-4 font-bold text-primary">${idx + 1}</td>
+      <td class="py-3 px-4">${item.name}</td>
+      <td class="py-3 px-4">${item.className}</td>
+      <td class="py-3 px-4 text-danger font-medium">${item.deduct}</td>
+      <td class="py-3 px-4">${item.cnt}</td>`;
+    bd.appendChild(tr);
+  });
+}
+
+function clearAll() {
+  if (!confirm("确定清空所有数据？")) return;
+  localStorage.removeItem(ATTENDANCE_KEY);
+  attendanceGlobalData = [];
+  initAllSystemData();
+}
+
+function upload(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  loading.classList.remove("hidden");
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
+      const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+      const arr = json.map(r => ({
+        name: r["姓名"] || "",
+        className: r["班级"] || "",
+        status: r["出勤状态"] || "",
+        deduct: Number(r["扣分"]) || 0,
+        week: r["教学周"] || "",
+        day: r["星期几"] || "",
+        section: r["节次"] || "",
+        time: r["上课时间"] || ""
+      })).filter(x => x.name);
+      attendanceGlobalData.push(...arr);
+      saveData();
+      initAllSystemData();
+      alert(`导入成功 ${arr.length} 条`);
+    } catch (e) { alert("解析失败"); }
+    finally { loading.classList.add("hidden"); fileInput.value = ""; }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+fileInput.addEventListener("change", upload);
+clearAllBtn.addEventListener("click", clearAll);
+searchName.addEventListener("input", renderTable);
+filterStatus.addEventListener("change", renderTable);
+filterWeek.addEventListener("change", renderTable);
+filterDay.addEventListener("change", renderTable);
+
+window.onload = () => { initDefaultUser(); checkLoginState(); };
+</script>
+</body>
+</html>
